@@ -10,6 +10,9 @@ var nextTick = require('process-nextick-args')
 
 module.exports = Tree
 
+/**
+ * @class
+ */
 function Tree (feed, opts) {
   if (!(this instanceof Tree)) return new Tree(feed, opts)
   if (!opts) opts = {}
@@ -56,6 +59,9 @@ Tree.prototype.put = function (name, value, cb) {
   })
 }
 
+/**
+ * @head 
+ */
 Tree.prototype._put = function (head, seq, names, value, cb) {
   var self = this
   var i = 0
@@ -359,6 +365,10 @@ Tree.prototype._closer = function (names, cmp, index, opts, cb) {
   }
 }
 
+/**
+ * @param opts 
+ * @callback {Tree~headCallback} cb
+ */
 Tree.prototype.head = function (opts, cb) {
   if (typeof opts === 'function') return this.head(null, opts)
   if (this._head >= this._offset) return this._getAndDecode(this._head, opts, cb)
@@ -541,6 +551,40 @@ Tree.prototype._init = function (names, value, cb) {
   this.feed.append(messages.Node.encode(node), cb)
 }
 
+/**
+ * Options that will be passed to a (hypercore) feed.
+ *
+ * @interface FeedGetOptions 
+ * @property {boolean} [wait=true] - wait for index to be downloaded
+ * @property {number} [timeout=0] - wait at max some milliseconds (0 means no timeout)
+ * @property {string} [valueEncoding] - 'json' | 'utf-8' | 'binary' // defaults to the feed's valueEncoding
+ */
+
+/**
+ * Options that will be passed when getting an object from the feed
+ *
+ * @interface FeedGetAndDecodeOptions
+ * @extends FeedGetOptions
+ * @property {boolean} [cached=false] - reads the data from the lru-cache if available
+ */
+
+/**
+ * Data stored in one version of append tree
+ *
+ * @interface Node
+ * @property {string} name
+ * @property {Buffer} value
+ * @property {Buffer} paths
+ */
+
+/**
+ * Cached variant of `this.feed.get` that additionally decode
+ * the data which is stored in a protocol buffer.
+ *
+ * @param {number} seq - aka. index; the item to get from the tree
+ * @param {FeedGetAndDecodeOptions} opts - Options for fetching the 
+ * @param {Tree~headCallback} cb
+ */
 Tree.prototype._getAndDecode = function (seq, opts, cb) {
   if (opts && opts.cached) opts.wait = false
 
@@ -692,6 +736,9 @@ function compare (a, b) {
   return idx
 }
 
+/**
+ * @class
+ */
 function Node (node, seq) {
   this.index = seq
   this.name = node.name
