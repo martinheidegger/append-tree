@@ -11,32 +11,29 @@ var nextTick = require('process-nextick-args')
 module.exports = Tree
 
 /**
- * @interface Codec
- */
-/**
- * @function
- * @name encode
- * @param  value
- * @return {Buffer}
- */
-/**
- * @function
- * @name decode
- * @param {Buffer} buffer
- * @return the decoded 
+ * @typedef Feed
+ * @property {(buffer: Buffer, cb: (err: Error, seq: number) => void) => void} append
  */
 
 /**
- * @class
- * 
+ * @typedef Codec
+ * @property {(value) => Buffer} encode
+ * @property {(buffer: Buffer) => any} decode
+ */
+
+/**
+ * @constructor
+ * @extends {typeof import('events').EventEmitter}
+ *
+ * @param {Feed}    feed                        - The hypercore that this append-tree should write to. Passing the
+ *        same feed to more than one tree will result in inconsistencies!
+ * @param {Object}  [opts]
  * @param {boolean | Cache} [opts.cache=true]   - Alternative cache implementation, defaults to a lru-cache.
-          'false' disables caching.
+ *        'false' disables caching.
  * @param {number}  [opts.cacheSize=65536]      - size of the lru-cache
  * @param {string}  [opts.valueEncoding=binary] - Value encoding to be used if no codec is given.
  * @param {Codec}   [opts.codec]                - Codec to encode/decode the values to be attached to a version.
  *        Defaults to a codec created with the "codecs" library and the valueEncoding.
- * @param {Feed}    opts.feed                   - The hypercore that this append-tree should write to. Passing the
- *        same feed to more than one tree will result in inconsistencies!
  * @param {boolean} [opts.readonly=false]       - (internal) prevents further checkouts (used by .checkout)
  */
 function Tree (feed, opts) {
@@ -69,13 +66,15 @@ inherits(Tree, events.EventEmitter)
 
 /**
  * @callback Tree~putCallback
- * @param {Error} err - Error during putting of the data
+ * @param {Error} err
  */
 
 /**
+ * Adds value to the tree.
+ * 
  * @param {string} name - name of the location in which to write the value.
  * @param value - value to be written (will be encoded using opts.codec)
- * @param {Tree~putCallback}
+ * @param {Tree~putCallback} cb
  */
 Tree.prototype.put = function (name, value, cb) {
   var self = this
@@ -96,29 +95,13 @@ Tree.prototype.put = function (name, value, cb) {
 }
 
 /**
- * @interface Feed
- */
-/**
- * @function
- * @name append
- * @param {Buffer} buffer - Buffer data to append to the feed
- * @param {Feed~appendCallback} cb
- */
-
-/**
- * @callback Feed~appendCallback
- * @param {Error} err - Error during append
- * @param {number} seq - index of the new version
- */
-
-/**
  * Encodes a given value and puts it at the head of the tree.
  * 
  * Note: This needs to be run in a locked state else data inconsistencies might appear.
  *
  * @param {Node} head - version data before the put operation
  * @param {number} seq - version number before the put operation
- * @param {Array.string} names - the name split by /
+ * @param {Array.<string>} names - the name split by /
  * @param value - value to be stored with the version
  * @param {Feed~appendCallback} cb
  */
@@ -192,19 +175,13 @@ Tree.prototype.list = function (name, opts, cb) {
     }
   })
 }
-/**
- * @callback Tree~listCallback
- * @param {Error} err
- * @param {Array.string} nodes - 
- * @param {Array.number} seqs -
- */
 
 /**
  * @param {Node} head - version data before the put operation
  * @param {number} seq - version number before the put operation
- * @param {Array.string} names - the name split by /
+ * @param {Array.<string>} names - the name split by /
  * @param {FeedGetAndDecodeOptions} opts
- * @param {Tree~listCallback} cb
+ * @param {(err: Error, nodes: Array.<string>, seqs:Array.<number>) => void} cb
  */
 Tree.prototype._list = function (head, seq, names, opts, cb) {
   var headIndex
@@ -644,10 +621,7 @@ Tree.prototype._init = function (names, value, cb) {
  */
 
 /**
- * @callback Tree~versionCallback
- * @param {Error} err
- * @param {Node} node - data attached to that version, null if the requested version doesn't exist
- * @param {number} seq - tree index requested, -1 if the requested version doesn't exist
+ * @typedef {(err: Error, node: Node, seq: number) => } versionCallback
  */
 
 /**
@@ -656,7 +630,7 @@ Tree.prototype._init = function (names, value, cb) {
  *
  * @param {number} seq - aka. index; the item to get from the tree
  * @param {FeedGetAndDecodeOptions} opts - Options for fetching the 
- * @param {Tree~versionCallback} cb
+ * @param {versionCallback} cb
  */
 Tree.prototype._getAndDecode = function (seq, opts, cb) {
   if (opts && opts.cached) opts.wait = false
@@ -708,7 +682,7 @@ Tree.prototype._onlyCached = function (seqs) {
 
 /**
  * @param {number} seq - current version
- * @param {Array.Array.numbers} index - list of versions
+ * @param {Array.<Array.<numbers>>} index - list of versions
  * @return {Buffer} Varint compressed list of versions with relevant version history
  */
 Tree.prototype._deflate = function (seq, index) {
