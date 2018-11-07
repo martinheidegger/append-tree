@@ -11,7 +11,33 @@ var nextTick = require('process-nextick-args')
 module.exports = Tree
 
 /**
+ * @interface Codec
+ */
+/**
+ * @function
+ * @name encode
+ * @param  value
+ * @return {Buffer}
+ */
+/**
+ * @function
+ * @name decode
+ * @param {Buffer} buffer
+ * @return the decoded 
+ */
+
+/**
  * @class
+ * 
+ * @param {boolean | Cache} [opts.cache=true]   - Alternative cache implementation, defaults to a lru-cache.
+          'false' disables caching.
+ * @param {number}  [opts.cacheSize=65536]      - size of the lru-cache
+ * @param {string}  [opts.valueEncoding=binary] - Value encoding to be used if no codec is given.
+ * @param {Codec}   [opts.codec]                - Codec to encode/decode the values to be attached to a version.
+ *        Defaults to a codec created with the "codecs" library and the valueEncoding.
+ * @param {Feed}    opts.feed                   - The hypercore that this append-tree should write to. Passing the
+ *        same feed to more than one tree will result in inconsistencies!
+ * @param {boolean} [opts.readonly=false]       - (internal) prevents further checkouts (used by .checkout)
  */
 function Tree (feed, opts) {
   if (!(this instanceof Tree)) return new Tree(feed, opts)
@@ -41,6 +67,16 @@ function Tree (feed, opts) {
 
 inherits(Tree, events.EventEmitter)
 
+/**
+ * @callback Tree~putCallback
+ * @param {Error} err - Error during putting of the data
+ */
+
+/**
+ * @param {string} name - name of the location in which to write the value.
+ * @param value - value to be written (will be encoded using opts.codec)
+ * @param {Tree~putCallback}
+ */
 Tree.prototype.put = function (name, value, cb) {
   var self = this
   var names = split(name)
@@ -60,7 +96,31 @@ Tree.prototype.put = function (name, value, cb) {
 }
 
 /**
- * @head 
+ * @interface Feed
+ */
+/**
+ * @function
+ * @name append
+ * @param {Buffer} buffer - Buffer data to append to the feed
+ * @param {Feed~appendCallback} cb
+ */
+
+/**
+ * @callback Feed~appendCallback
+ * @param {Error} err - Error during append
+ * @param {number} seq - index of the new version
+ */
+
+/**
+ * Encodes a given value and puts it at the head of the tree.
+ * 
+ * Note: This needs to be run in a locked state else data inconsistencies might appear.
+ *
+ * @param {Node} head - version data before the put operation
+ * @param {number} seq - version number before the put operation
+ * @param {Array.string} names - the name split by /
+ * @param value - value to be stored with the version
+ * @param {Feed~appendCallback} cb
  */
 Tree.prototype._put = function (head, seq, names, value, cb) {
   var self = this
@@ -93,7 +153,6 @@ Tree.prototype._put = function (head, seq, names, value, cb) {
         value: self._codec.encode(value),
         paths: self._deflate(len, index)
       }
-
       self.version = self.feed.length
       self.feed.append(messages.Node.encode(node), cb)
       return
@@ -133,7 +192,20 @@ Tree.prototype.list = function (name, opts, cb) {
     }
   })
 }
+/**
+ * @callback Tree~listCallback
+ * @param {Error} err
+ * @param {Array.string} nodes - 
+ * @param {Array.number} seqs -
+ */
 
+/**
+ * @param {Node} head - version data before the put operation
+ * @param {number} seq - version number before the put operation
+ * @param {Array.string} names - the name split by /
+ * @param {FeedGetAndDecodeOptions} opts
+ * @param {Tree~listCallback} cb
+ */
 Tree.prototype._list = function (head, seq, names, opts, cb) {
   var headIndex
   try {
@@ -366,8 +438,10 @@ Tree.prototype._closer = function (names, cmp, index, opts, cb) {
 }
 
 /**
- * @param opts 
- * @callback {Tree~headCallback} cb
+ * Retreive the data of the latest version.
+ * 
+ * @param {FeedGetAndDecodeOptions} opts 
+ * @callback {Tree~versionCallback} cb
  */
 Tree.prototype.head = function (opts, cb) {
   if (typeof opts === 'function') return this.head(null, opts)
@@ -378,6 +452,7 @@ Tree.prototype.head = function (opts, cb) {
 
   this.ready(function (err) {
     if (err) return cb(err)
+    // The feed has a newer version, 
     if (self.feed.length > self._offset) self._getAndDecode(self.feed.length - 1, opts, cb)
     else cb(null, null, -1)
   })
@@ -557,7 +632,7 @@ Tree.prototype._init = function (names, value, cb) {
  * @interface FeedGetOptions 
  * @property {boolean} [wait=true] - wait for index to be downloaded
  * @property {number} [timeout=0] - wait at max some milliseconds (0 means no timeout)
- * @property {string} [valueEncoding] - 'json' | 'utf-8' | 'binary' // defaults to the feed's valueEncoding
+ * @property {string} [valueEncoding] - 'json' | 'utf-8' | 'binary'; defaults to the feed's valueEncoding
  */
 
 /**
@@ -569,12 +644,10 @@ Tree.prototype._init = function (names, value, cb) {
  */
 
 /**
- * Data stored in one version of append tree
- *
- * @interface Node
- * @property {string} name
- * @property {Buffer} value
- * @property {Buffer} paths
+ * @callback Tree~versionCallback
+ * @param {Error} err
+ * @param {Node} node - data attached to that version, null if the requested version doesn't exist
+ * @param {number} seq - tree index requested, -1 if the requested version doesn't exist
  */
 
 /**
@@ -583,7 +656,7 @@ Tree.prototype._init = function (names, value, cb) {
  *
  * @param {number} seq - aka. index; the item to get from the tree
  * @param {FeedGetAndDecodeOptions} opts - Options for fetching the 
- * @param {Tree~headCallback} cb
+ * @param {Tree~versionCallback} cb
  */
 Tree.prototype._getAndDecode = function (seq, opts, cb) {
   if (opts && opts.cached) opts.wait = false
@@ -633,8 +706,18 @@ Tree.prototype._onlyCached = function (seqs) {
   return cachedSeqs
 }
 
+/**
+ * @param {number} seq - current version
+ * @param {Array.Array.numbers} index - list of versions
+ * @return {Buffer} Varint compressed list of versions with relevant version history
+ */
 Tree.prototype._deflate = function (seq, index) {
+  // true as long as every last index in the array is seq
   var endsWithSeq = true
+  // Guessing a good length for creating a buffer without
+  // actually creating the buffer.
+  // TODO: Document what practical reason is why this suffices.
+  //       It should break occasionally?!
   var lenIsh = 11
   var i = 0
   var idx
@@ -670,6 +753,7 @@ Tree.prototype._deflate = function (seq, index) {
     }
   }
 
+  // TODO: Better error message
   if (offset > buf.length) throw new Error('Assert error: buffer length too small')
   return buf.slice(0, offset)
 }
@@ -737,7 +821,13 @@ function compare (a, b) {
 }
 
 /**
+ * Raw entry in the append-tree. 
+ *
  * @class
+ * @property {number} index - version index in the tree that this node represents
+ * @property {string} name - name of the key that was changed in this version
+ * @property {Buffer} value - value to be stored with the 
+ * @property {Buffer} paths
  */
 function Node (node, seq) {
   this.index = seq
