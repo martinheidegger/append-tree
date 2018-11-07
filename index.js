@@ -88,8 +88,10 @@ Tree.prototype._put = function (head, seq, names, value, cb) {
         paths: self._deflate(len, index)
       }
 
-      self.version = self.feed.length
-      self.feed.append(messages.Node.encode(node), cb)
+      self.feed.append(messages.Node.encode(node), function (err, seq) {
+        self.version = seq
+        cb(err)
+      })
       return
     }
 
@@ -537,8 +539,11 @@ Tree.prototype._init = function (names, value, cb) {
     paths: this._deflate(this.feed.length, index)
   }
 
-  this.version = this.feed.length
-  this.feed.append(messages.Node.encode(node), cb)
+  var self = this
+  this.feed.append(messages.Node.encode(node), function (err, seq) {
+    self.version = seq
+    cb(err, seq)
+  })
 }
 
 Tree.prototype._getAndDecode = function (seq, opts, cb) {

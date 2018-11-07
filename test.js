@@ -920,6 +920,30 @@ tape('no cache', function (t) {
   })
 })
 
+tape('parallel appending results in correct version', function (t) {
+  var core = hypercore(ram)
+  var tr1 = tree(core)
+  var tr2 = tree(core)
+  var count = 0
+  var seqs = []
+  tr1.put('/hello', 'world', function (err) {
+    done(err, tr1.version)
+  })
+  tr2.put('/hallo', 'welt', function (err) {
+    done(err, tr2.version)
+  })
+
+  function done (err, seq) {
+    t.error(err, 'no error')
+    seqs.push(seq)
+    count++
+    if (count === 2) {
+      t.deepEquals(seqs, [0, 1])
+      t.end()
+    }
+  }
+})
+
 function create (opts) {
   return tree(hypercore(ram), opts)
 }
